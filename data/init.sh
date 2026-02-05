@@ -8,4 +8,4 @@ VERSION=$(grep DOCKER_IMAGE_CBIOPORTAL ../.env | tail -n 1 | cut -d '=' -f 2-)
 docker run --rm -i $VERSION cat /cbioportal/db-scripts/cgds.sql > cgds.sql
 
 # Download the combined hg19 + hg38 seed database
-wget -O seed.sql.gz "https://github.com/cBioPortal/datahub/raw/refs/heads/master/seedDB/seed-cbioportal_hg19_hg38_v2.14.5.sql.gz‎"
+wget -O seed.sql.gz "https://github.com/cBioPortal/datahub/raw/refs/heads/master/seedDB/seed-cbioportal_hg19_hg38_v2.14.5.sql.gz"
