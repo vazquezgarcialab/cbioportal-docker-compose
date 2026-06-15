@@ -6,6 +6,11 @@ config/portal.properties
 config/application.properties
 !*.sh
 .idea
+.env
 .env.*
+!.env.example
+config/saml-signing.key
+config/saml-signing.crt
+config/*.bak.*
 dev/keycloak/idp-metadata.xml
 dev/keycloak/keycloak-config-generated.json
