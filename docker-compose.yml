@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   nginx:
     image: nginx:1.27
@@ -20,94 +18,73 @@ services:
     restart: unless-stopped
     image: ${DOCKER_IMAGE_CBIOPORTAL}
     container_name: cbioportal-container
+    env_file:
+      - .env
     environment:
-      SHOW_DEBUG_INFO: "true"
-      PORTAL_HOME: "/cbioportal-webapp"
+      SERVER_PORT: ${CBIOPORTAL_SERVER_PORT}
+    entrypoint: [ "/cbioportal/entrypoint.sh" ]
     volumes:
-     - ./study:/study/
-     - ${APPLICATION_PROPERTIES_PATH:-./config/application.properties}:/cbioportal-webapp/application.properties:ro
-     - ./config/saml-signing.crt:/cbioportal-webapp/saml-signing.crt:ro
-     - ./config/saml-signing.key:/cbioportal-webapp/saml-signing.key:ro
+      - ./study:/study/
+      - ./entrypoint.sh:/cbioportal/entrypoint.sh
+      - ${APPLICATION_PROPERTIES_PATH:-./config/application.properties}:/cbioportal-webapp/application.properties:ro
+      - ./config/saml-signing.crt:/cbioportal-webapp/saml-signing.crt:ro
+      - ./config/saml-signing.key:/cbioportal-webapp/saml-signing.key:ro
+      - ./data/clickhouse.sql:/cbioportal/clickhouse.sql:ro
     depends_on:
-     - cbioportal-database
-     - cbioportal-session
+      cbioportal-database:
+        condition: service_healthy
+      cbioportal-session:
+        condition: service_started
     networks:
      - cbio-net
-    command: /bin/sh -c "java -Xms2g -Xmx4g -cp '/cbioportal-webapp:/cbioportal-webapp/lib/*' org.cbioportal.PortalApplication --spring.config.location=cbioportal-webapp/application.properties --authenticate=saml --session.service.url=http://cbioportal-session:5001/api/sessions/my_portal/ --clickhouse_mode=$${APP_CLICKHOUSE_MODE:-false} --spring.profiles.active=$${APP_SPRING_PROFILE:-default}"
+    command: /bin/sh -c "java -Xms2g -Xmx4g -cp '/cbioportal-webapp:/cbioportal-webapp/lib/*' org.cbioportal.PortalApplication --spring.config.location=file:/cbioportal-webapp/application.properties --authenticate=saml --session.service.url=http://cbioportal-session:5001/api/sessions/my_portal/ --clickhouse_mode=true --spring.profiles.active=clickhouse"
+
   cbioportal-database:
     restart: unless-stopped
-    image: ${DOCKER_IMAGE_MYSQL}
+    image: ${DOCKER_IMAGE_CLICKHOUSE}
     container_name: cbioportal-database-container
-    environment:
-      MYSQL_DATABASE: ${DB_MYSQL_DB_NAME}
-      MYSQL_USER: ${DB_MYSQL_USERNAME}
-      MYSQL_PASSWORD: ${DB_MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_MYSQL_PASSWORD}
+    env_file:
+      - .env
     volumes:
-     - ./data/cgds.sql:/docker-entrypoint-initdb.d/cgds.sql:ro
-     - ./data/seed.sql.gz:/docker-entrypoint-initdb.d/seed.sql.gz:ro
-     - cbioportal_mysql_data:/var/lib/mysql
+      - ./data/schema.sql:/data/schema.sql:ro
+      - ./data/load_schema.sh:/docker-entrypoint-initdb.d/001_load_schema.sh:ro
+      - ./data/seed.sql.gz:/data/seed.sql.gz:ro
+      - ./data/load_seed.sh:/docker-entrypoint-initdb.d/002_load_seed.sh:ro
+      - ./data/clickhouse.sql:/data/clickhouse.sql:ro
+      - ./data/load_derived_tables.sh:/docker-entrypoint-initdb.d/003_load_derived_tables.sh:ro
+      - ${CLICKHOUSE_SETTINGS_PATH:-./data/clickhouse_user_settings.xml}:/etc/clickhouse-server/users.d/cbio_user.xml:ro
+      - cbioportal_clickhouse_data:/var/lib/clickhouse
     networks:
-     - cbio-net
-    command: --local-infile=1
+      - cbio-net
     healthcheck:
-      test: [ "CMD-SHELL", "mysqladmin ping -h localhost -u $$MYSQL_USER -p$$MYSQL_PASSWORD" ]
+      test: ["CMD-SHELL", "clickhouse-client --user=$$CLICKHOUSE_USER --password=$$CLICKHOUSE_PASSWORD --query=\"SELECT COUNT(*) FROM $$CLICKHOUSE_DB.type_of_cancer\" 2>/dev/null | grep -q '^[1-9]'"]
       interval: 10s
       timeout: 3s
       retries: 300
-      start_period: 3m
+      start_period: 5m
+
   cbioportal-session:
     restart: unless-stopped
     image: ${DOCKER_IMAGE_SESSION_SERVICE}
     container_name: cbioportal-session-container
+    env_file:
+      - .env
     environment:
-      SERVER_PORT: 5001
-      JAVA_OPTS: -Dspring.data.mongodb.uri=mongodb://cbioportal-session-database:27017/session-service
+      SERVER_PORT: ${SESSION_SERVICE_SERVER_PORT}
+      JAVA_OPTS: ${SESSION_SERVICE_JAVA_OPTS}
     depends_on:
       - cbioportal-session-database
     networks:
       - cbio-net
+
   cbioportal-session-database:
     restart: unless-stopped
     image: mongo:4.2
     container_name: cbioportal-session-database-container
-    environment:
-      MONGO_INITDB_DATABASE: session_service
+    env_file:
+      - .env
     volumes:
       - cbioportal_mongo_data:/data/db
-    networks:
-      - cbio-net
-
-  keycloak:
-    container_name: cbiokc
-    image: quay.io/keycloak/keycloak:16.1.1
-    restart: unless-stopped
-    depends_on:
-      - keycloak-database
-    environment:
-      DB_VENDOR: mysql
-      DB_ADDR: keycloak-database
-      DB_USER: keycloak
-      DB_PASSWORD: ${KC_DB_PASSWORD:-MassGeneralHospital@2025!}
-      KEYCLOAK_USER: admin
-      KEYCLOAK_PASSWORD: ${KC_ADMIN_PASSWORD:-MassGeneralHospital@2025!}
-      PROXY_ADDRESS_FORWARDING: "true"
-      KEYCLOAK_FRONTEND_URL: https://cbioportal.mgb.org/auth
-      JAVA_OPTS: "-Xmx384m"
-    networks:
-      - cbio-net
-  keycloak-database:
-    container_name: kcdb
-    image: mysql:5.7
-    restart: unless-stopped
-    volumes:
-      - keycloak_mysql_data:/var/lib/mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: ${KC_DB_PASSWORD:-MassGeneralHospital@2025!}
-      MYSQL_USER: keycloak
-      MYSQL_PASSWORD: ${KC_DB_PASSWORD:-MassGeneralHospital@2025!}
-      MYSQL_DATABASE: keycloak
-    command: --ssl=0 --lower_case_table_names=1
     networks:
       - cbio-net
 
@@ -115,6 +92,5 @@ networks:
   cbio-net:
 
 volumes:
-  cbioportal_mysql_data:
+  cbioportal_clickhouse_data:
   cbioportal_mongo_data:
-  keycloak_mysql_data:
