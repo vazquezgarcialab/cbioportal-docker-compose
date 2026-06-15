@@ -53,7 +53,9 @@ services:
       - ./data/clickhouse.sql:/data/clickhouse.sql:ro
       - ./data/load_derived_tables.sh:/docker-entrypoint-initdb.d/003_load_derived_tables.sh:ro
       - ${CLICKHOUSE_SETTINGS_PATH:-./data/clickhouse_user_settings.xml}:/etc/clickhouse-server/users.d/cbio_user.xml:ro
+      - ./data/clickhouse_backups.xml:/etc/clickhouse-server/config.d/clickhouse_backups.xml:ro
       - cbioportal_clickhouse_data:/var/lib/clickhouse
+      - cbioportal_backups:/backups
     networks:
       - cbio-net
     healthcheck:
@@ -94,3 +96,4 @@ networks:
 volumes:
   cbioportal_clickhouse_data:
   cbioportal_mongo_data:
+  cbioportal_backups:

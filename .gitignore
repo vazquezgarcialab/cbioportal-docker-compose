@@ -15,4 +15,5 @@ config/*.bak.*
 dev/keycloak/idp-metadata.xml
 dev/keycloak/keycloak-config-generated.json
 !data/clickhouse_user_settings.xml
+!data/clickhouse_backups.xml
 backups/
