@@ -1,0 +1,23 @@
+<!--
+ClickHouse "backups" disk + allow-listing, so the server accepts
+`BACKUP DATABASE ... TO Disk('backups', 'foo.zip')` (and the matching
+RESTORE). Without an allowed disk declared, BACKUP/RESTORE refuse.
+
+The disk path /backups/ is mounted from the cbioportal_backups named
+volume in docker-compose.yml; copying the backup file out is done by a
+short-lived alpine helper container (see the cbioportal_backup_db
+Airflow DAG), mirroring the Isabl backup pattern.
+-->
+<clickhouse>
+    <storage_configuration>
+        <disks>
+            <backups>
+                <type>local</type>
+                <path>/backups/</path>
+            </backups>
+        </disks>
+    </storage_configuration>
+    <backups>
+        <allowed_disk>backups</allowed_disk>
+    </backups>
+</clickhouse>
